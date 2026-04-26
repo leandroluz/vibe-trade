@@ -44,6 +44,7 @@ DEFAULT_SYMBOL=EURUSD
 DEFAULT_TIMEFRAME=M5
 ANALYSIS_PROFILE=equilibrado
 ANALYSIS_LOG_PATH=logs/analysis_history.jsonl
+OPENAI_MODEL=gpt-4.1
 CANDLES_COUNT=300
 MT5_HOST=127.0.0.1
 MT5_PORT=18812
@@ -86,6 +87,18 @@ Por padrão, cada execução pode ser persistida em JSONL para histórico e futu
 python -m app.main --log-file logs/analysis_history.jsonl
 ```
 
+Para inspecionar o payload estruturado que depois poderá ser enviado ao Jarvis/LLM:
+
+```bash
+python -m app.main --data-file data/eurusd_m5.csv --print-ai-payload --ai-context-window 10
+```
+
+Para pedir uma interpretação explicativa via OpenAI sobre o snapshot atual:
+
+```bash
+python -m app.main --data-file data/eurusd_m5.csv --with-ai --log-file logs/analysis_history.jsonl
+```
+
 Informando os parâmetros manualmente:
 
 ```bash
@@ -113,8 +126,28 @@ python -m app.main --symbol EURUSD --profile equilibrado --watch 60
 No modo `--watch`, a tela é atualizada a cada ciclo e o terminal destaca mudanças de setup entre uma leitura e outra.
 Com `--data-file`, o `--watch` faz replay candle a candle até o fim do arquivo.
 O arquivo JSONL guarda um objeto por ciclo com snapshot completo da análise, origem dos dados e eventos de transição.
+Nesta primeira versão, `--with-ai` funciona apenas em execução única e usa o histórico JSONL recente como contexto.
 
 Se o bridge estiver em outra porta ou host, ajuste `MT5_HOST` e `MT5_PORT` no `.env`.
+
+## Interface Web
+
+Interface funcional inicial com Streamlit:
+
+```bash
+streamlit run ui/app.py
+```
+
+A interface permite:
+
+- rodar análise ao vivo via MT5
+- selecionar o ativo a partir dos símbolos realmente disponíveis no MT5
+- rodar replay por CSV
+- salvar snapshot local com nome gerado automaticamente por ativo e timeframe
+- pedir interpretação via IA
+- visualizar histórico recente em JSONL filtrado por ativo, timeframe e perfil atuais
+
+Na interface Streamlit, a OpenAI API Key pode ser informada em um campo do sidebar apenas para a sessão atual, sem persistência no projeto.
 
 ## Estrutura
 

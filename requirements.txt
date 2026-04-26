@@ -1,3 +1,6 @@
 mt5linux
+openai
 pandas
+pydantic
+streamlit
 python-dotenv

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -10,6 +11,10 @@ REQUIRED_COLUMNS = ("time", "open", "high", "low", "close")
 
 class CandleDataError(Exception):
     """Raised when local candle data cannot be loaded or persisted."""
+
+
+class AnalysisHistoryError(Exception):
+    """Raised when persisted analysis history cannot be read."""
 
 
 def load_candles_csv(path: str | Path) -> pd.DataFrame:
@@ -68,6 +73,76 @@ def build_replay_window(candles: pd.DataFrame, count: int, step: int) -> pd.Data
     window.attrs["replay_step"] = step
     window.attrs["replay_total_steps"] = max_step + 1
     return window
+
+
+def load_recent_analysis_history(
+    path: str | Path,
+    limit: int = 10,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    profile: str | None = None,
+) -> list[dict]:
+    file_path = Path(path)
+    if not file_path.exists():
+        return []
+
+    if limit <= 0:
+        return []
+
+    try:
+        with file_path.open("r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except Exception as exc:
+        raise AnalysisHistoryError(f"Falha ao ler histórico de análise: {file_path}") from exc
+
+    records: list[dict] = []
+    for raw_line in reversed(lines):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise AnalysisHistoryError(
+                f"Histórico JSONL inválido em {file_path}: {exc}"
+            ) from exc
+        if not _history_record_matches(
+            record,
+            symbol=symbol,
+            timeframe=timeframe,
+            profile=profile,
+        ):
+            continue
+        records.append(record)
+        if len(records) >= limit:
+            break
+
+    records.reverse()
+    return records
+
+
+def _history_record_matches(
+    record: dict,
+    *,
+    symbol: str | None,
+    timeframe: str | None,
+    profile: str | None,
+) -> bool:
+    analysis = record.get("analysis", {})
+
+    if symbol:
+        if str(analysis.get("symbol", "")).upper() != symbol.upper():
+            return False
+
+    if timeframe:
+        if str(analysis.get("timeframe", "")).upper() != timeframe.upper():
+            return False
+
+    if profile:
+        if str(analysis.get("profile", "")).lower() != profile.lower():
+            return False
+
+    return True
 
 
 def _infer_symbol_from_dataframe(candles: pd.DataFrame, file_path: Path) -> str:

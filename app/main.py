@@ -8,9 +8,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
+from app.ai import (
+    AIIntegrationError,
+    AIInterpretation,
+    build_ai_payload,
+    format_ai_interpretation,
+    interpret_with_openai,
+)
 from app.analyzer import AnalysisResult, analyze_market
 from app.config import load_settings
-from app.data import CandleDataError, build_replay_window, load_candles_csv, save_candles_csv
+from app.data import (
+    AnalysisHistoryError,
+    CandleDataError,
+    build_replay_window,
+    load_candles_csv,
+    save_candles_csv,
+)
 from app.indicators import add_indicators
 from app.mt5_client import MT5Client, MT5ConnectionError
 
@@ -58,6 +71,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=settings.analysis_log_path,
         help="Arquivo JSONL para persistir o histórico de análises.",
     )
+    parser.add_argument(
+        "--print-ai-payload",
+        action="store_true",
+        help="Imprime o payload estruturado para futura integracao com IA.",
+    )
+    parser.add_argument(
+        "--ai-context-window",
+        type=int,
+        default=10,
+        help="Quantidade de registros recentes do JSONL para incluir no payload da IA.",
+    )
+    parser.add_argument(
+        "--with-ai",
+        action="store_true",
+        help="Solicita uma interpretacao adicional via OpenAI usando o payload estruturado.",
+    )
     return parser
 
 
@@ -69,6 +98,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--candles deve ser pelo menos 50 para suportar a EMA 50.")
     if args.watch < 0:
         parser.error("--watch não pode ser negativo.")
+    if args.ai_context_window < 0:
+        parser.error("--ai-context-window não pode ser negativo.")
+    if args.watch > 0 and args.with_ai:
+        parser.error("--with-ai nesta versao suporta apenas execucao unica.")
     if args.watch > 0 and args.data_file and not Path(args.data_file).exists():
         parser.error("--data-file precisa apontar para um arquivo existente.")
 
@@ -126,6 +159,8 @@ def _run_once(
     replay_candles=None,
     replay_step: int = 0,
 ) -> AnalysisResult | int:
+    candle_status = None
+    change_message = None
     try:
         candles = _load_candles_source(args, settings, replay_candles=replay_candles, replay_step=replay_step)
         resolved_symbol = candles.attrs.get("resolved_symbol", args.symbol) or args.symbol
@@ -139,6 +174,9 @@ def _run_once(
     except CandleDataError as exc:
         print(f"Erro de dados: {exc}")
         return 1
+    except AnalysisHistoryError as exc:
+        print(f"Erro de histórico: {exc}")
+        return 1
     except MT5ConnectionError as exc:
         print(f"Erro de conexão MT5: {exc}")
         return 1
@@ -149,16 +187,35 @@ def _run_once(
     print_output = format_analysis(analysis)
     if args.watch == 0:
         print(print_output)
+        candle_status = f"Execução única para candle {analysis.last_candle_time}"
         _append_jsonl_log(
             log_path=Path(args.log_file).expanduser() if args.log_file else None,
             analysis=analysis,
             args=args,
             source="csv-file" if args.data_file else "mt5",
-            candle_status=f"Execução única para candle {analysis.last_candle_time}",
+            candle_status=candle_status,
             change_message=None,
             replay_step=replay_step if replay_candles is not None else None,
             event_history=[],
         )
+        payload = None
+        if args.print_ai_payload or args.with_ai:
+            payload = build_ai_payload(
+                analysis=analysis,
+                log_path=Path(args.log_file).expanduser() if args.log_file else None,
+                context_window=args.ai_context_window,
+                candle_status=candle_status,
+                change_message=change_message,
+            )
+        if args.print_ai_payload and payload is not None:
+            print(json.dumps(payload, ensure_ascii=True, indent=2))
+        if args.with_ai and payload is not None:
+            try:
+                ai_result = _run_ai_interpretation(payload=payload, settings=settings)
+            except AIIntegrationError as exc:
+                print(f"Erro de IA: {exc}")
+                return 1
+            print(format_ai_interpretation(ai_result))
         return 0
 
     return analysis
@@ -297,6 +354,13 @@ def _append_jsonl_log(
     }
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+
+
+def _run_ai_interpretation(*, payload: dict, settings) -> AIInterpretation:
+    try:
+        return interpret_with_openai(payload=payload, model=settings.openai_model)
+    except AIIntegrationError as exc:
+        raise AIIntegrationError(f"Falha na integracao de IA: {exc}") from exc
 
 
 def _load_candles_source(

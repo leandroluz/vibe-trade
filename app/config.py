@@ -12,6 +12,7 @@ class Settings:
     default_timeframe: str = "M5"
     analysis_profile: str = "equilibrado"
     analysis_log_path: str = ""
+    openai_model: str = "gpt-4.1"
     candles_count: int = 300
     mt5_host: str = "127.0.0.1"
     mt5_port: int = 18812
@@ -24,6 +25,7 @@ def load_settings() -> Settings:
     default_timeframe = os.getenv("DEFAULT_TIMEFRAME", "M5").strip().upper() or "M5"
     analysis_profile = os.getenv("ANALYSIS_PROFILE", "equilibrado").strip().lower() or "equilibrado"
     analysis_log_path = os.getenv("ANALYSIS_LOG_PATH", "").strip()
+    openai_model = os.getenv("OPENAI_MODEL", "gpt-4.1").strip() or "gpt-4.1"
 
     if analysis_profile not in {"conservador", "equilibrado", "agressivo"}:
         analysis_profile = "equilibrado"
@@ -53,6 +55,7 @@ def load_settings() -> Settings:
         default_timeframe=default_timeframe,
         analysis_profile=analysis_profile,
         analysis_log_path=analysis_log_path,
+        openai_model=openai_model,
         candles_count=candles_count,
         mt5_host=mt5_host,
         mt5_port=mt5_port,

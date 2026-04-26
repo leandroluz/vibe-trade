@@ -72,6 +72,25 @@ class MT5Client:
         candles.attrs["resolved_symbol"] = resolved_symbol
         return candles
 
+    def list_symbols(self, query: str | None = None) -> list[str]:
+        if not self.initialized or self._mt5 is None:
+            raise MT5ConnectionError("Conexão com MT5 não foi inicializada.")
+
+        symbols = self._mt5.symbols_get()
+        if not symbols:
+            error_code, error_message = self._mt5.last_error()
+            raise MT5ConnectionError(
+                "Não foi possível listar os símbolos disponíveis no MT5 "
+                f"({error_code}): {error_message}"
+            )
+
+        names = sorted({item.name for item in symbols})
+        if not query:
+            return names
+
+        normalized_query = query.strip().upper()
+        return [name for name in names if normalized_query in name.upper()]
+
     def resolve_symbol(self, symbol: str) -> str:
         if not self.initialized or self._mt5 is None:
             raise MT5ConnectionError("Conexão com MT5 não foi inicializada.")
