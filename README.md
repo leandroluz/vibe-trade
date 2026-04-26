@@ -42,6 +42,8 @@ Arquivo `.env`:
 ```env
 DEFAULT_SYMBOL=EURUSD
 DEFAULT_TIMEFRAME=M5
+ANALYSIS_PROFILE=equilibrado
+ANALYSIS_LOG_PATH=logs/analysis_history.jsonl
 CANDLES_COUNT=300
 MT5_HOST=127.0.0.1
 MT5_PORT=18812
@@ -78,11 +80,39 @@ Com os valores padrão do `.env`:
 python -m app.main
 ```
 
+Por padrão, cada execução pode ser persistida em JSONL para histórico e futura integração com IA:
+
+```bash
+python -m app.main --log-file logs/analysis_history.jsonl
+```
+
 Informando os parâmetros manualmente:
 
 ```bash
 python -m app.main --symbol EURUSD --timeframe M5 --candles 300
 ```
+
+Salvando um snapshot local dos candles atuais para replay posterior:
+
+```bash
+python -m app.main --symbol EURUSD --save-data data/eurusd_m5.csv
+```
+
+Executando a análise a partir de um CSV salvo, sem depender do MT5:
+
+```bash
+python -m app.main --data-file data/eurusd_m5.csv --profile equilibrado
+```
+
+Em modo contínuo, reavaliando a cada 60 segundos:
+
+```bash
+python -m app.main --symbol EURUSD --profile equilibrado --watch 60
+```
+
+No modo `--watch`, a tela é atualizada a cada ciclo e o terminal destaca mudanças de setup entre uma leitura e outra.
+Com `--data-file`, o `--watch` faz replay candle a candle até o fim do arquivo.
+O arquivo JSONL guarda um objeto por ciclo com snapshot completo da análise, origem dos dados e eventos de transição.
 
 Se o bridge estiver em outra porta ou host, ajuste `MT5_HOST` e `MT5_PORT` no `.env`.
 

@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 class Settings:
     default_symbol: str = "EURUSD"
     default_timeframe: str = "M5"
+    analysis_profile: str = "equilibrado"
+    analysis_log_path: str = ""
     candles_count: int = 300
     mt5_host: str = "127.0.0.1"
     mt5_port: int = 18812
@@ -20,6 +22,11 @@ def load_settings() -> Settings:
 
     default_symbol = os.getenv("DEFAULT_SYMBOL", "EURUSD").strip() or "EURUSD"
     default_timeframe = os.getenv("DEFAULT_TIMEFRAME", "M5").strip().upper() or "M5"
+    analysis_profile = os.getenv("ANALYSIS_PROFILE", "equilibrado").strip().lower() or "equilibrado"
+    analysis_log_path = os.getenv("ANALYSIS_LOG_PATH", "").strip()
+
+    if analysis_profile not in {"conservador", "equilibrado", "agressivo"}:
+        analysis_profile = "equilibrado"
 
     raw_candles_count = os.getenv("CANDLES_COUNT", "300").strip() or "300"
     try:
@@ -44,6 +51,8 @@ def load_settings() -> Settings:
     return Settings(
         default_symbol=default_symbol,
         default_timeframe=default_timeframe,
+        analysis_profile=analysis_profile,
+        analysis_log_path=analysis_log_path,
         candles_count=candles_count,
         mt5_host=mt5_host,
         mt5_port=mt5_port,
