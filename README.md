@@ -1,23 +1,95 @@
 # vibe-trade
 
-Copiloto de trading com IA para análise assistida de mercado.
+Copiloto de trading V0 para análise técnica no terminal com dados do MetaTrader 5.
 
-> Regra central: a IA ajuda, você decide.
+Este projeto está preparado para rodar no Linux usando `mt5linux` com o MetaTrader 5 aberto via Wine.
 
-## Objetivo
+## Escopo da V0
 
-Ajudar o trader a responder:
+- Conecta ao MetaTrader 5
+- Busca candles de um ativo
+- Calcula EMA 9, EMA 20, EMA 50, RSI 14 e ATR 14
+- Gera um resumo técnico no terminal
+- Não envia ordens
+- Não usa IA nesta etapa
 
-"Existe uma boa oportunidade agora ou estou forçando entrada?"
+## Requisitos
 
-## Stack
+- Python 3.10+
+- MetaTrader 5 instalado e aberto no Wine
+- Conta conectada no terminal do MT5
+- Python para Windows dentro do mesmo prefixo Wine do MT5
+- Pacote `MetaTrader5` instalado nesse Python do Windows
 
-- Python
-- MetaTrader5
-- pandas
-- OpenAI
+## Instalação
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Crie seu arquivo de ambiente a partir do exemplo:
+
+```bash
+cp .env.example .env
+```
+
+## Configuração
+
+Arquivo `.env`:
+
+```env
+DEFAULT_SYMBOL=EURUSD
+DEFAULT_TIMEFRAME=M5
+CANDLES_COUNT=300
+MT5_HOST=127.0.0.1
+MT5_PORT=18812
+```
+
+## Preparação do bridge MT5 no Linux
+
+O pacote `MetaTrader5` oficial não instala nativamente no Linux. Neste projeto, o acesso ao terminal é feito com `mt5linux`, que expõe a API do MT5 por um bridge local.
+
+Fluxo esperado:
+
+1. Tenha o MetaTrader 5 aberto no Wine.
+2. Instale um Python para Windows dentro do Wine.
+3. Nesse Python do Windows, instale o pacote oficial:
+
+```bash
+wine path\\to\\python.exe -m pip install MetaTrader5
+wine path\\to\\python.exe -m pip install mt5linux
+```
+
+4. Inicie o servidor do bridge no ambiente Wine:
+
+```bash
+wine path\\to\\python.exe -m mt5linux
+```
+
+O padrão do `mt5linux` é escutar em `127.0.0.1:18812`, que já está refletido no `.env.example`.
 
 ## Execução
 
+Com os valores padrão do `.env`:
+
 ```bash
 python -m app.main
+```
+
+Informando os parâmetros manualmente:
+
+```bash
+python -m app.main --symbol EURUSD --timeframe M5 --candles 300
+```
+
+Se o bridge estiver em outra porta ou host, ajuste `MT5_HOST` e `MT5_PORT` no `.env`.
+
+## Estrutura
+
+- `app/config.py`: leitura das variáveis de ambiente
+- `app/mt5_client.py`: conexão e leitura de candles no MT5 com suporte a `mt5linux`
+- `app/indicators.py`: cálculo dos indicadores técnicos
+- `app/analyzer.py`: consolidação da análise
+- `app/main.py`: CLI e impressão do resumo final

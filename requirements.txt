@@ -1,5 +1,3 @@
-
-MetaTrader5
+mt5linux
 pandas
-openai
 python-dotenv
