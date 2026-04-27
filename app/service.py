@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 from app.ai import AIInterpretation, build_ai_payload, interpret_with_openai
@@ -17,6 +15,7 @@ from app.data import (
 )
 from app.indicators import add_indicators
 from app.mt5_client import MT5Client, MT5ConnectionError
+from app.stores import build_analysis_history_store
 
 
 class AnalysisServiceError(Exception):
@@ -74,6 +73,7 @@ def execute_analysis(
 ) -> AnalysisExecution:
     active_settings = settings or load_settings()
     log_path = Path(request.log_file).expanduser() if request.log_file else None
+    history_store = build_analysis_history_store(log_path)
 
     try:
         candles, source = _load_candles_source(request, active_settings)
@@ -112,14 +112,25 @@ def execute_analysis(
         except Exception as exc:
             raise AnalysisServiceError(f"Falha na integração de IA: {exc}") from exc
 
-    if persist_log:
-        _append_jsonl_log(
-            log_path=log_path,
+    if persist_log and history_store is not None:
+        history_store.append_analysis_run(
             analysis=analysis,
-            request=request,
+            request_metadata={
+                "mode": "single-run",
+                "symbol_requested": request.symbol,
+                "timeframe_requested": request.timeframe.upper(),
+                "profile_requested": request.profile,
+                "candles_requested": request.candles_count,
+                "watch_interval_seconds": 0,
+                "data_file": request.data_file,
+                "save_data": request.save_data,
+                "replay_step": request.replay_step if request.data_file else None,
+                "event_history": [],
+            },
             source=source,
             candle_status=candle_status,
             change_message=change_message,
+            ai_interpretation=ai_interpretation,
         )
 
     return AnalysisExecution(
@@ -194,39 +205,3 @@ def _build_change_message(current: AnalysisResult, previous: AnalysisResult | No
 
     prefix = "ALERTA: novo sinal." if became_actionable else "Mudança detectada."
     return f"{prefix} {' | '.join(fragments)}"
-
-
-def _append_jsonl_log(
-    *,
-    log_path: Path | None,
-    analysis: AnalysisResult,
-    request: AnalysisRequest,
-    source: str,
-    candle_status: str,
-    change_message: str | None,
-) -> None:
-    if log_path is None:
-        return
-
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    record = {
-        "logged_at": datetime.now().isoformat(timespec="seconds"),
-        "source": source,
-        "mode": "single-run",
-        "symbol_requested": request.symbol,
-        "timeframe_requested": request.timeframe.upper(),
-        "profile_requested": request.profile,
-        "candles_requested": request.candles_count,
-        "watch_interval_seconds": 0,
-        "data_file": request.data_file,
-        "save_data": request.save_data,
-        "replay_step": request.replay_step if request.data_file else None,
-        "candle_status": candle_status,
-        "change_message": change_message,
-        "event_history": [],
-        "analysis": {
-            **analysis.__dict__,
-        },
-    }
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=True) + "\n")

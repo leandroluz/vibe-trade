@@ -16,7 +16,7 @@ from app.ai import (
     interpret_with_openai,
 )
 from app.analyzer import AnalysisResult, analyze_market
-from app.config import load_settings
+from data.config import load_settings
 from app.data import (
     AnalysisHistoryError,
     CandleDataError,

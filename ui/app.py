@@ -14,13 +14,14 @@ if str(ROOT) not in sys.path:
 
 from app.ai import format_ai_interpretation
 from app.config import load_settings
-from app.data import CandleDataError, load_candles_csv, load_recent_analysis_history
+from app.data import CandleDataError, load_candles_csv
 from app.service import (
     AnalysisRequest,
     AnalysisServiceError,
     execute_analysis,
     get_available_symbols,
 )
+from app.stores import build_analysis_history_store
 
 
 st.set_page_config(
@@ -88,8 +89,8 @@ def main() -> None:
             data_file = st.text_input("Arquivo CSV", value="data/eurusd_m5.csv")
             replay_step = _render_replay_controls(data_file=data_file, candles_count=int(candles_count))
         else:
-            save_snapshot = st.checkbox("Salvar snapshot CSV automaticamente", value=False)
-            if save_snapshot:
+            auto_save_snapshot = st.checkbox("Salvar snapshot CSV automaticamente", value=False)
+            if auto_save_snapshot:
                 save_data = _default_snapshot_path(symbol=symbol, timeframe=timeframe)
                 st.caption(f"Snapshot será salvo em `{save_data}`")
 
@@ -182,12 +183,6 @@ def _render_mt5_symbol_selector(*, settings) -> str:
     )
 
 
-def _default_snapshot_path(*, symbol: str, timeframe: str) -> str:
-    normalized_symbol = re.sub(r"[^a-zA-Z0-9]+", "_", symbol).strip("_").lower()
-    normalized_timeframe = re.sub(r"[^a-zA-Z0-9]+", "_", timeframe).strip("_").lower()
-    return f"data/{normalized_symbol}_{normalized_timeframe}.csv"
-
-
 def _render_history_panel(
     *,
     log_file: str,
@@ -199,8 +194,8 @@ def _render_history_panel(
         st.caption("Nenhum arquivo de log configurado.")
         return
 
-    history = load_recent_analysis_history(
-        log_file,
+    history_store = build_analysis_history_store(log_file)
+    history = history_store.load_recent(
         limit=15,
         symbol=symbol,
         timeframe=timeframe,
@@ -287,6 +282,12 @@ def _fmt_price(value: float) -> str:
     if absolute >= 1:
         return f"{value:.5f}"
     return f"{value:.6f}"
+
+
+def _default_snapshot_path(*, symbol: str, timeframe: str) -> str:
+    normalized_symbol = re.sub(r"[^a-z0-9]+", "_", symbol.strip().lower()).strip("_") or "snapshot"
+    normalized_timeframe = re.sub(r"[^a-z0-9]+", "_", timeframe.strip().lower()).strip("_") or "tf"
+    return f"data/{normalized_symbol}_{normalized_timeframe}.csv"
 
 
 def _fmt_range(value: float, reference: float) -> str:

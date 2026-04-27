@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -15,6 +16,10 @@ class CandleDataError(Exception):
 
 class AnalysisHistoryError(Exception):
     """Raised when persisted analysis history cannot be read."""
+
+
+class ChatHistoryError(Exception):
+    """Raised when persisted chat history cannot be read or written."""
 
 
 def load_candles_csv(path: str | Path) -> pd.DataFrame:
@@ -121,6 +126,83 @@ def load_recent_analysis_history(
     return records
 
 
+def append_chat_history_entry(
+    path: str | Path,
+    *,
+    symbol: str,
+    timeframe: str,
+    profile: str,
+    question: str,
+    answer: str,
+    model: str | None,
+    response_id: str | None,
+    snapshot: dict,
+    history_summary: dict,
+) -> None:
+    file_path = Path(path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    record = {
+        "logged_at": datetime.now().isoformat(timespec="seconds"),
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "profile": profile,
+        "question": question,
+        "answer": answer,
+        "model": model,
+        "response_id": response_id,
+        "snapshot": snapshot,
+        "history_summary": history_summary,
+    }
+
+    try:
+        with file_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+    except Exception as exc:
+        raise ChatHistoryError(f"Falha ao gravar histórico de chat: {file_path}") from exc
+
+
+def load_recent_chat_history(
+    path: str | Path,
+    limit: int = 10,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    profile: str | None = None,
+) -> list[dict]:
+    file_path = Path(path)
+    if not file_path.exists() or limit <= 0:
+        return []
+
+    try:
+        with file_path.open("r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except Exception as exc:
+        raise ChatHistoryError(f"Falha ao ler histórico de chat: {file_path}") from exc
+
+    records: list[dict] = []
+    for raw_line in reversed(lines):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ChatHistoryError(f"Histórico de chat JSONL inválido em {file_path}: {exc}") from exc
+        if not _chat_record_matches(
+            record,
+            symbol=symbol,
+            timeframe=timeframe,
+            profile=profile,
+        ):
+            continue
+        records.append(record)
+        if len(records) >= limit:
+            break
+
+    records.reverse()
+    return records
+
+
 def _history_record_matches(
     record: dict,
     *,
@@ -141,6 +223,25 @@ def _history_record_matches(
     if profile:
         if str(analysis.get("profile", "")).lower() != profile.lower():
             return False
+
+    return True
+
+
+def _chat_record_matches(
+    record: dict,
+    *,
+    symbol: str | None,
+    timeframe: str | None,
+    profile: str | None,
+) -> bool:
+    if symbol and str(record.get("symbol", "")).upper() != symbol.upper():
+        return False
+
+    if timeframe and str(record.get("timeframe", "")).upper() != timeframe.upper():
+        return False
+
+    if profile and str(record.get("profile", "")).lower() != profile.lower():
+        return False
 
     return True
 

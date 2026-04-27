@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from app.analyzer import AnalysisResult
-from app.data import load_recent_analysis_history
+from app.stores import build_analysis_history_store
 
 
 class AIIntegrationError(Exception):
@@ -22,6 +22,13 @@ class AIInterpretation:
     model: str | None = None
 
 
+@dataclass(frozen=True)
+class AIChatResponse:
+    answer: str
+    response_id: str | None = None
+    model: str | None = None
+
+
 def build_ai_payload(
     *,
     analysis: AnalysisResult,
@@ -32,13 +39,14 @@ def build_ai_payload(
 ) -> dict:
     recent_history = []
     if log_path:
-        recent_history = load_recent_analysis_history(
-            log_path,
-            limit=context_window,
-            symbol=analysis.symbol,
-            timeframe=analysis.timeframe,
-            profile=analysis.profile,
-        )
+        history_store = build_analysis_history_store(log_path)
+        if history_store is not None:
+            recent_history = history_store.load_recent(
+                limit=context_window,
+                symbol=analysis.symbol,
+                timeframe=analysis.timeframe,
+                profile=analysis.profile,
+            )
 
     compact_history = [_compact_history_entry(entry) for entry in recent_history]
 
@@ -129,6 +137,51 @@ def interpret_with_openai(
     )
 
 
+def chat_with_openai(
+    *,
+    payload: dict,
+    question: str,
+    model: str,
+    api_key: str | None = None,
+    conversation_context: dict | None = None,
+) -> AIChatResponse:
+    client = _build_openai_client(api_key=api_key)
+    instructions = _build_chat_instructions()
+    context_json = json.dumps(payload, ensure_ascii=True, indent=2)
+    conversation_json = json.dumps(conversation_context or {}, ensure_ascii=True, indent=2)
+
+    try:
+        response = client.responses.create(
+            model=model,
+            instructions=instructions,
+            input=[
+                {
+                    "role": "user",
+                    "content": (
+                        "Contexto tecnico estruturado:\n"
+                        f"{context_json}\n\n"
+                        "Memoria curta da conversa:\n"
+                        f"{conversation_json}\n\n"
+                        "Pergunta do usuario:\n"
+                        f"{question}"
+                    ),
+                }
+            ],
+        )
+    except Exception as exc:
+        raise AIIntegrationError(f"Falha ao consultar a OpenAI: {exc}") from exc
+
+    answer = getattr(response, "output_text", "").strip()
+    if not answer:
+        raise AIIntegrationError("A resposta da OpenAI veio vazia para a pergunta do chat.")
+
+    return AIChatResponse(
+        answer=answer,
+        response_id=getattr(response, "id", None),
+        model=getattr(response, "model", None),
+    )
+
+
 def format_ai_interpretation(result: AIInterpretation) -> str:
     risk_flags = result.risk_flags or ["Nenhum risco adicional destacado."]
     return "\n".join(
@@ -157,6 +210,35 @@ def _build_system_instructions() -> str:
         "Se houver conflito entre setup, tendencia e historico, explique o conflito objetivamente. "
         "Responda em Portugues do Brasil."
     )
+
+
+def _build_chat_instructions() -> str:
+    return (
+        "Voce e o Jarvis Trader, um assistente tecnico conversacional. "
+        "Responda a pergunta do usuario usando apenas o contexto tecnico fornecido. "
+        "Use a memoria curta da conversa para manter continuidade quando ela for relevante. "
+        "Nao invente preco, candle, indicador, historico ou ativo ausente do payload. "
+        "Nao recalcule indicadores. "
+        "Nao trate a resposta como ordem de execucao. "
+        "Se a pergunta pedir algo fora do payload, deixe isso explicito. "
+        "Responda em Portugues do Brasil, de forma objetiva."
+    )
+
+
+def _build_openai_client(api_key: str | None = None):
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise AIIntegrationError(
+            "Pacote `openai` nao encontrado. Instale as dependencias do projeto para usar `--with-ai`."
+        ) from exc
+
+    try:
+        return OpenAI(api_key=api_key) if api_key else OpenAI()
+    except Exception as exc:
+        raise AIIntegrationError(
+            "OPENAI_API_KEY nao configurada ou cliente OpenAI nao inicializado corretamente."
+        ) from exc
 
 
 def _compact_history_entry(entry: dict) -> dict:
