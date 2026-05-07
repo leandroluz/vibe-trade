@@ -3,4 +3,5 @@ openai
 pandas
 pydantic
 streamlit
+streamlit-autorefresh
 python-dotenv

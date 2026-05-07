@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.ai import AIIntegrationError, build_ai_payload, chat_with_openai
+from app.ai import AIIntegrationError, build_ai_payload, chat_with_openai, summarize_chat_memory
 from app.chat_memory import build_chat_memory_context
 from app.config import load_settings
 from app.service import (
@@ -129,6 +129,12 @@ def main() -> None:
             st.caption(execution.candle_status)
             if execution.change_message:
                 st.write(execution.change_message)
+            with st.expander("Resumo da sessão", expanded=False):
+                summary = st.session_state.get("jarvis_session_summary")
+                if summary:
+                    st.markdown(summary)
+                else:
+                    st.caption("Ainda não há resumo acumulado desta sessão.")
             _render_recent_chat_history(
                 chat_log_file=chat_log_file,
                 symbol=analysis.symbol,
@@ -158,6 +164,7 @@ def main() -> None:
             conversation_context = build_chat_memory_context(
                 chat_store=chat_store,
                 session_messages=st.session_state.get("jarvis_chat_messages", []),
+                session_summary=st.session_state.get("jarvis_session_summary"),
                 symbol=execution.analysis.symbol,
                 timeframe=execution.analysis.timeframe,
                 profile=execution.analysis.profile,
@@ -184,6 +191,17 @@ def main() -> None:
                 ]
             )
             _append_chat_message("assistant", assistant_text)
+            try:
+                st.session_state["jarvis_session_summary"] = summarize_chat_memory(
+                    payload=payload,
+                    previous_summary=st.session_state.get("jarvis_session_summary"),
+                    question=question,
+                    answer=response.answer,
+                    model=settings.openai_model,
+                    api_key=openai_api_key or None,
+                )
+            except AIIntegrationError as exc:
+                st.warning(str(exc))
             try:
                 if chat_store is not None:
                     chat_store.append_chat_turn(
@@ -219,6 +237,7 @@ def _refresh_context(request: AnalysisRequest) -> None:
     st.session_state["chat_execution"] = execution
     st.session_state["chat_payload"] = payload
     st.session_state["jarvis_chat_messages"] = []
+    st.session_state["jarvis_session_summary"] = ""
     st.success("Contexto do Jarvis atualizado.")
 
 
