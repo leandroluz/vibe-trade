@@ -106,6 +106,18 @@ def main() -> None:
             disabled=not auto_evaluate,
             key="coach_auto_interval",
         )
+        manual_model = st.text_input(
+            "Modelo manual",
+            value=defaults["manual_model"],
+            help="Modelo usado ao clicar manualmente em `Analisar agora`.",
+            key="coach_manual_model",
+        )
+        auto_model = st.text_input(
+            "Modelo auto",
+            value=defaults["auto_model"],
+            help="Modelo usado nas reavaliações automáticas.",
+            key="coach_auto_model",
+        )
         analyze_now = st.button("Analisar agora", type="primary", use_container_width=True)
 
     _persist_sidebar_state(
@@ -116,6 +128,8 @@ def main() -> None:
         max_total_risk_pct=max_total_risk_pct,
         auto_evaluate=auto_evaluate,
         auto_interval_label=auto_interval_label,
+        manual_model=manual_model,
+        auto_model=auto_model,
     )
 
     if auto_evaluate:
@@ -137,6 +151,7 @@ def main() -> None:
             account_size=account_size,
             risk_per_trade_pct=risk_per_trade_pct,
             max_total_risk_pct=max_total_risk_pct,
+            model_name=auto_model if auto_evaluate else manual_model,
         )
     except MT5ConnectionError as exc:
         st.error(f"Não foi possível conectar ao MT5: {exc}")
@@ -155,6 +170,7 @@ def run_coach_analysis(
     account_size: float,
     risk_per_trade_pct: float,
     max_total_risk_pct: float,
+    model_name: str,
 ) -> dict[str, Any]:
     log_error = None
     management_log_error = None
@@ -205,6 +221,7 @@ def run_coach_analysis(
         "open_positions": enriched_positions,
         "position_management": position_management,
         "market_scan": market_scan,
+        "_model_override": model_name,
         "instruction": (
             "Avalie a conta, risco aberto, scanner técnico e a gestão ativa das posições. "
             "Responda qual a melhor ação agora entre open_trade, manage_positions, wait e avoid_trading. "
@@ -264,6 +281,7 @@ def run_coach_analysis(
         "log_error": log_error,
         "management_log_error": management_log_error,
         "timeframe": timeframe,
+        "model_name": model_name,
     }
 
 
@@ -291,6 +309,7 @@ def render_result(result: dict[str, Any]) -> None:
         st.warning(f"Falha ao gravar log do Coach IA: {result['log_error']}")
     if result.get("management_log_error"):
         st.warning(f"Falha ao gravar log de gestão de posições: {result['management_log_error']}")
+    st.caption(f"Modelo em uso nesta análise: `{result['model_name']}`")
 
     st.subheader("Posições abertas")
     if positions:
@@ -564,6 +583,8 @@ def _load_sidebar_defaults(settings) -> dict[str, Any]:
         "max_total_risk_pct": max_total_risk_pct,
         "auto_evaluate": str(params.get("auto_evaluate", "false")).lower() == "true",
         "auto_interval_label": AUTO_INTERVAL_REVERSE.get(auto_interval_ms, "60 segundos"),
+        "manual_model": str(params.get("manual_model", settings.openai_manual_model)).strip() or settings.openai_manual_model,
+        "auto_model": str(params.get("auto_model", settings.openai_auto_model)).strip() or settings.openai_auto_model,
     }
 
 
@@ -576,6 +597,8 @@ def _persist_sidebar_state(
     max_total_risk_pct: float,
     auto_evaluate: bool,
     auto_interval_label: str,
+    manual_model: str,
+    auto_model: str,
 ) -> None:
     st.query_params.update(
         {
@@ -586,6 +609,8 @@ def _persist_sidebar_state(
             "max_total_risk_pct": str(max_total_risk_pct),
             "auto_evaluate": "true" if auto_evaluate else "false",
             "auto_interval_ms": str(AUTO_INTERVAL_OPTIONS[auto_interval_label]),
+            "manual_model": manual_model,
+            "auto_model": auto_model,
         }
     )
 

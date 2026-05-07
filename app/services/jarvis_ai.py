@@ -88,7 +88,7 @@ class JarvisCoachResult:
 
 def ask_jarvis_coach(payload: dict[str, Any]) -> JarvisCoachResult:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    model = os.getenv("OPENAI_MODEL", "").strip()
+    model = str(payload.get("_model_override") or "").strip() or os.getenv("OPENAI_MODEL", "").strip()
 
     if not api_key:
         raise RuntimeError("Defina a variável de ambiente OPENAI_API_KEY para usar o Coach IA.")
