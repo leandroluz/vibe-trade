@@ -9,6 +9,7 @@ def build_chat_memory_context(
     *,
     chat_store: ChatHistoryStore | None,
     session_messages: list[dict[str, Any]] | None,
+    session_summary: str | None,
     symbol: str,
     timeframe: str,
     profile: str,
@@ -16,6 +17,7 @@ def build_chat_memory_context(
     persisted_limit: int = 5,
 ) -> dict:
     return {
+        "session_summary": (session_summary or "").strip() or None,
         "recent_session_messages": _compact_session_messages(
             session_messages or [],
             limit=session_limit,

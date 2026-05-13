@@ -182,6 +182,48 @@ def chat_with_openai(
     )
 
 
+def summarize_chat_memory(
+    *,
+    payload: dict,
+    previous_summary: str | None,
+    question: str,
+    answer: str,
+    model: str,
+    api_key: str | None = None,
+) -> str:
+    client = _build_openai_client(api_key=api_key)
+    context_json = json.dumps(payload, ensure_ascii=True, indent=2)
+
+    try:
+        response = client.responses.create(
+            model=model,
+            instructions=_build_summary_instructions(),
+            input=[
+                {
+                    "role": "user",
+                    "content": (
+                        "Resumo anterior da sessao:\n"
+                        f"{(previous_summary or 'Nenhum resumo anterior.').strip()}\n\n"
+                        "Contexto tecnico atual:\n"
+                        f"{context_json}\n\n"
+                        "Nova pergunta do usuario:\n"
+                        f"{question}\n\n"
+                        "Nova resposta do Jarvis:\n"
+                        f"{answer}"
+                    ),
+                }
+            ],
+        )
+    except Exception as exc:
+        raise AIIntegrationError(f"Falha ao resumir a sessão: {exc}") from exc
+
+    summary = getattr(response, "output_text", "").strip()
+    if not summary:
+        raise AIIntegrationError("A OpenAI retornou resumo vazio para a memória de sessão.")
+
+    return summary
+
+
 def format_ai_interpretation(result: AIInterpretation) -> str:
     risk_flags = result.risk_flags or ["Nenhum risco adicional destacado."]
     return "\n".join(
@@ -222,6 +264,17 @@ def _build_chat_instructions() -> str:
         "Nao trate a resposta como ordem de execucao. "
         "Se a pergunta pedir algo fora do payload, deixe isso explicito. "
         "Responda em Portugues do Brasil, de forma objetiva."
+    )
+
+
+def _build_summary_instructions() -> str:
+    return (
+        "Voce e o Jarvis Trader e precisa manter um resumo curto de memoria de sessao. "
+        "Atualize o resumo usando apenas os dados fornecidos. "
+        "Nao invente informacoes ausentes. "
+        "Mantenha no maximo 5 linhas curtas em Portugues do Brasil. "
+        "Priorize: ativo, setup atual, riscos relevantes, perguntas recorrentes e decisoes de contexto. "
+        "Responda apenas com o resumo atualizado, sem titulo."
     )
 
 
